@@ -67,8 +67,13 @@ func (l *FreeList[T]) Get() *T {
 	l.mu.Unlock()
 	// Reset or build outside the lock: v belongs to this caller once it is off
 	// the list, and holding the mutex across caller-supplied code would
-	// serialize every Get behind it.
-	return l.factory.reuse(v)
+	// serialize every Get behind it. The ifs stay nested, as in Pool.Get.
+	if v != nil {
+		if l.factory.rewind(v) {
+			return v
+		}
+	}
+	return l.factory.build()
 }
 
 // Put parks v for reuse, or drops it when maxIdle elements are already parked;

@@ -12,6 +12,15 @@
 - Reset runs in `Get`, not `Put`: a failed reset can then be answered with a
   fresh element. `Pool` leaves `sync.Pool.New` unset so a miss reaches `Get` as
   nil and is built without being reset.
+- Both `Get`s keep the hit path free of calls into objpool: `factory.rewind`
+  (the reset check) and `factory.build` (the miss path) each fit the inlining
+  budget and inline into `Get`. Keep `rewind` that small — it is the hit path —
+  and do not fold the two into one helper: together they exceed the budget, and
+  every `Get` pays a call. Test `rewind` in its own `if`, nested under the nil
+  check: joined to it with `&&`, the compiler materializes the result as a bool
+  (`SETE`/`TEST`) on the hit path. Generic methods report inlining only where
+  they are instantiated, so check it with `go build -gcflags=-m` in a consuming
+  package.
 - `FreeList` never evicts. Bounding retained memory is the caller's job at
   release (`RatchetTrim.Due`, then drop instead of `Put`); do not add eviction
   or a trim hook to the list itself.
