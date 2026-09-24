@@ -18,14 +18,17 @@ func newFactory[T any](ctor string, newFn func() *T, resetFn func(*T) error) fac
 	return factory[T]{newFn: newFn, resetFn: resetFn, ctor: ctor}
 }
 
-// reuse returns v rewound for reuse, or a freshly built element when v is nil
-// (a miss) or its reset reports it unfit — never nil. A fresh element is never
-// reset.
-func (f *factory[T]) reuse(v *T) *T {
-	if v != nil && (f.resetFn == nil || f.resetFn(v) == nil) {
-		return v
-	}
-	v = f.newFn()
+// rewind runs resetFn, if any, over v, a recycled element, and reports whether
+// v may be handed out: false when the reset declares it unfit to reuse. It is
+// the whole of Get's hit path, and small enough to inline there.
+func (f *factory[T]) rewind(v *T) bool {
+	return f.resetFn == nil || f.resetFn(v) == nil
+}
+
+// build returns a freshly built element — never nil, and never reset. It is
+// Get's miss path, kept apart from rewind so that rewind stays inlinable.
+func (f *factory[T]) build() *T {
+	v := f.newFn()
 	if v == nil {
 		panic(f.ctor + ": newFn returned nil")
 	}

@@ -54,10 +54,15 @@ func New[T any](newFn func() *T, resetFn func(*T) error) *Pool[T] {
 // when the pool has none — never nil. The caller owns it until handing it back
 // with Put.
 func (p *Pool[T]) Get() *T {
-	// sync.Pool.New stays unset, so a miss arrives here as nil and reuse builds
-	// a fresh element without running the reset over it.
-	v, _ := p.pool.Get().(*T)
-	return p.factory.reuse(v)
+	// sync.Pool.New stays unset, so a miss arrives here as nil and is built
+	// without running the reset over it. The ifs stay nested: joined with &&,
+	// the compiler materializes rewind's result as a bool on the hit path.
+	if v, _ := p.pool.Get().(*T); v != nil {
+		if p.factory.rewind(v) {
+			return v
+		}
+	}
+	return p.factory.build()
 }
 
 // Put offers v back for reuse; a nil v is ignored. Rewinding is Get's job (see
